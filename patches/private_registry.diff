@@ -1,0 +1,108 @@
+diff --git a/test/e2e/framework/util.go b/test/e2e/framework/util.go
+index 9040517e51..e36f67918b 100644
+--- a/test/e2e/framework/util.go
++++ b/test/e2e/framework/util.go
+@@ -232,15 +232,24 @@ func GetServerArchitecture(c clientset.Interface) string {
+ 	return arch
+ }
+ 
++func GetPauseImagePrefix() string {
++	var image = currentPodInfraContainerImageName
++	var registry = os.Getenv("E2E_REGISTRY_OVERRIDE")
++	if len(registry) > 0 {
++		image = registry + "/pause"
++	}
++	return image
++}
++
+ // GetPauseImageName fetches the pause image name for the same architecture as the apiserver.
+ func GetPauseImageName(c clientset.Interface) string {
+-	return currentPodInfraContainerImageName + "-" + GetServerArchitecture(c) + ":" + currentPodInfraContainerImageVersion
++	return GetPauseImagePrefix() + "-" + GetServerArchitecture(c) + ":" + currentPodInfraContainerImageVersion
+ }
+ 
+ // GetPauseImageNameForHostArch fetches the pause image name for the same architecture the test is running on.
+ // TODO: move this function to the test/utils
+ func GetPauseImageNameForHostArch() string {
+-	return currentPodInfraContainerImageName + "-" + goruntime.GOARCH + ":" + currentPodInfraContainerImageVersion
++	return GetPauseImagePrefix() + "-" + goruntime.GOARCH + ":" + currentPodInfraContainerImageVersion
+ }
+ 
+ // SubResource proxy should have been functional in v1.0.0, but SubResource
+diff --git a/test/integration/framework/util.go b/test/integration/framework/util.go
+index 239c06ac22..24c3b71ff3 100644
+--- a/test/integration/framework/util.go
++++ b/test/integration/framework/util.go
+@@ -19,6 +19,7 @@ limitations under the License.
+ package framework
+ 
+ import (
++	"os"
+ 	"strings"
+ 
+ 	clientset "k8s.io/client-go/kubernetes"
+@@ -49,5 +50,10 @@ func GetServerArchitecture(c clientset.Interface) string {
+ 
+ // GetPauseImageName fetches the pause image name for the same architecture as the apiserver.
+ func GetPauseImageName(c clientset.Interface) string {
+-	return currentPodInfraContainerImageName + "-" + GetServerArchitecture(c) + ":" + currentPodInfraContainerImageVersion
++	var image = currentPodInfraContainerImageName
++	var registry = os.Getenv("E2E_REGISTRY_OVERRIDE")
++	if len(registry) > 0 {
++		image = registry + "/pause"
++	}
++	return image + "-" + GetServerArchitecture(c) + ":" + currentPodInfraContainerImageVersion
+ }
+diff --git a/test/utils/image/manifest.go b/test/utils/image/manifest.go
+index 25f18917ef..f267caf948 100644
+--- a/test/utils/image/manifest.go
++++ b/test/utils/image/manifest.go
+@@ -18,6 +18,7 @@ package image
+ 
+ import (
+ 	"fmt"
++	"os"
+ 	"runtime"
+ )
+ 
+@@ -80,25 +81,34 @@ var (
+ 	ResourceController = ImageConfig{e2eRegistry, "resource-consumer/controller", "1.0"}
+ 	ServeHostname      = ImageConfig{e2eRegistry, "serve-hostname", "1.0"}
+ 	TestWebserver      = ImageConfig{e2eRegistry, "test-webserver", "1.0"}
++
++	registry = os.Getenv("E2E_REGISTRY_OVERRIDE")
+ )
+ 
+ func GetE2EImage(image ImageConfig) string {
+-	return fmt.Sprintf("%s/%s-%s:%s", image.registry, image.name, runtime.GOARCH, image.version)
++	if len(registry) == 0 {
++		registry = image.registry
++	}
++	return fmt.Sprintf("%s/%s-%s:%s", registry, image.name, runtime.GOARCH, image.version)
+ }
+ 
+ // GetBusyboxImage returns multi-arch busybox docker image
+ func GetBusyBoxImage() string {
++	var reg_path = ""
++	if len(registry) > 0 {
++		reg_path = registry + "/"
++	}
+ 	switch arch := runtime.GOARCH; arch {
+ 	case "amd64":
+-		return "busybox"
++		return reg_path + "busybox"
+ 	case "arm":
+-		return "arm32v6/busybox"
++		return reg_path + "arm32v6/busybox"
+ 	case "arm64":
+-		return "arm64v8/busybox"
++		return reg_path + "arm64v8/busybox"
+ 	case "ppc64le":
+-		return "ppc64le/busybox"
++		return reg_path + "ppc64le/busybox"
+ 	case "s390x":
+-		return "s390x/busybox"
++		return reg_path + "s390x/busybox"
+ 	default:
+ 		return ""
+ 	}
