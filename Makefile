@@ -18,13 +18,14 @@
 
 TARGET = kube-conformance
 GOTARGET = github.com/heptio/$(TARGET)
-REGISTRY ?= gcr.io/heptio-images
+default_registry = gcr.io/heptio-images
+REGISTRY ?= $(default_registry)
 latest_stable = 1.9
 KUBE_VERSION ?= $(latest_stable)
 kube_version = $(subst v,,$(KUBE_VERSION))
 kube_version_full = $(shell curl -Ss https://storage.googleapis.com/kubernetes-release/release/stable-$(kube_version).txt)
 IMAGE = $(REGISTRY)/$(BIN)
-in_docker_group=$(filter docker,$(shell groups))                                                                                                                                                                     
+in_docker_group=$(filter docker,$(shell groups))
 is_root=$(filter 0,$(shell id -u))
 DOCKER?=$(if $(or $(in_docker_group),$(is_root)),docker,sudo docker)
 DIR := ${CURDIR}
@@ -33,21 +34,27 @@ DIR := ${CURDIR}
 
 all: container
 
-e2e.test: getbins
+e2e.test: getbins check_reg
 kubectl: getbins
 ginkgo: getbins
+
+check_reg:
+	if [ "$(default_registry)" != "$(REGISTRY)" ]; then \
+	  [ -f ./e2e.test ] && rm ./e2e.test ; \
+		$(DIR)/hack_swap_images.sh $(REGISTRY) $(DIR) $(kube_version_full); \
+	fi
 
 getbins: | _cache/.getbins.$(kube_version_full).timestamp
 
 _cache/.getbins.$(kube_version_full).timestamp:
 	mkdir -p _cache/$(kube_version_full)
-	
+
 	curl -SsL http://gcsweb.k8s.io/gcs/kubernetes-release/release/$(kube_version_full)/kubernetes.tar.gz | tar -C _cache/$(kube_version_full) -xz
 	cd _cache/$(kube_version_full) && KUBE_VERSION="${kube_version_full}" \
 	                                  KUBERNETES_DOWNLOAD_TESTS=true \
 					  KUBERNETES_SKIP_CONFIRM=true ./kubernetes/cluster/get-kube-binaries.sh
-	mv _cache/$(kube_version_full)/kubernetes/cluster ./
 	mv _cache/$(kube_version_full)/kubernetes/platforms/linux/amd64/e2e.test ./
+	mv _cache/$(kube_version_full)/kubernetes/cluster ./
 	mv _cache/$(kube_version_full)/kubernetes/platforms/linux/amd64/ginkgo ./
 	mv _cache/$(kube_version_full)/kubernetes/platforms/linux/amd64/kubectl ./
 	touch $@
